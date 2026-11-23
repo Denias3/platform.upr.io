@@ -1,11 +1,521 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Приложение ПРБР: открыть на телефоне или скачать по QR-коду.">
+<title>ПРБР — приложение</title>
+<style>
+    * { box-sizing: border-box }
+
+    html, body { margin: 0; padding: 0 }
+
+    body {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: #f5f6f8;
+        color: #1a1d21;
+        font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    .card {
+        width: 100%;
+        max-width: 720px;
+        padding: 40px 32px;
+        background: #fff;
+        border: 1px solid #e6e8eb;
+        border-radius: 16px;
+        text-align: center;
+    }
+
+    .logo {
+        display: inline-block;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #3555d9;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: .08em;
+    }
+
+    h1 { margin: 18px 0 6px; font-size: 26px; line-height: 1.25 }
+
+    .muted { margin: 0 auto; max-width: 44ch; color: #6b7280 }
+
+    .btn {
+        display: inline-block;
+        margin-top: 24px;
+        padding: 13px 26px;
+        border-radius: 10px;
+        background: #3555d9;
+        color: #fff;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .btn:active, .btn:hover { background: #2c48bd }
+
+    .hint { margin: 14px 0 0; font-size: 14px; color: #6b7280 }
+
+    .store-links { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: center; margin-top: 12px }
+
+    .store-links a { color: #3555d9 }
+
+    .qr-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 28px;
+        margin-top: 32px;
+    }
+
+    figure.qr { margin: 0 }
+
+    .qr-box {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px;
+        border: 1px solid #e6e8eb;
+        border-radius: 12px;
+        background: #fff;
+    }
+
+    .qr-box svg { display: block; width: 180px; height: 180px }
+
+    figcaption { margin-top: 10px; font-weight: 600 }
+
+    figcaption span { display: block; margin-top: 2px; font-weight: 400; font-size: 13px; color: #6b7280; word-break: break-all }
+
+    [hidden] { display: none !important }
+</style>
 </head>
 <body>
-    <h1>asdasdasdasd</h1>    
+<main class="card">
+    <span class="logo">ПРБР</span>
+    <h1>Мобильное приложение «ПРБР»</h1>
+    <p class="muted" id="status">Откройте приложение на телефоне или отсканируйте QR-код, чтобы скачать его.</p>
+
+    <section id="mobile-view" hidden>
+        <a class="btn" id="open-app" href="prbr://mobile">Открыть «ПРБР»</a>
+        <p class="hint" id="mobile-hint">Приложение ещё не установлено? Скачайте его в магазине приложений:</p>
+        <p class="store-links">
+            <a href="sberapps://open.sberapps/btr.prbr.mobile">Google Play / Сбер Apps</a>
+            <a href="sbapps://application?id=com.platform.upr">App Store</a>
+        </p>
+    </section>
+
+    <section id="desktop-view" class="qr-grid">
+        <figure class="qr">
+            <div class="qr-box" id="qr-android"></div>
+            <figcaption>Android <span>sberapps://open.sberapps/btr.prbr.mobile</span></figcaption>
+        </figure>
+        <figure class="qr">
+            <div class="qr-box" id="qr-ios"></div>
+            <figcaption>iOS <span>sbapps://application?id=com.platform.upr</span></figcaption>
+        </figure>
+    </section>
+
+    <noscript><p class="hint">Для показа QR-кодов и автоматического перехода нужно включить JavaScript.</p></noscript>
+</main>
+
+<script>
+(function () {
+    'use strict';
+
+    var DEEP_LINK = 'prbr://mobile';
+    var ANDROID_LINK = 'sberapps://open.sberapps/btr.prbr.mobile';
+    var IOS_LINK = 'sbapps://application?id=com.platform.upr';
+
+    /* ---------- QR Code (byte mode, EC level M, versions 1-10), no external deps ---------- */
+
+    var MAX_VERSION = 10;
+    var ECC_BITS = { L: 1, M: 0, Q: 3, H: 2 };
+    // index = version
+    var ECC_PER_BLOCK = { M: [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26] };
+    var ECC_BLOCKS = { M: [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5] };
+    var ALIGN_POS = [
+        [], [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34],
+        [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]
+    ];
+
+    function toUtf8(str) {
+        if (typeof TextEncoder !== 'undefined') {
+            return Array.prototype.slice.call(new TextEncoder().encode(str));
+        }
+        var bytes = [], i;
+        var s = unescape(encodeURIComponent(str));
+        for (i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 0xff);
+        return bytes;
+    }
+
+    function gfMul(a, b) {
+        var z = 0;
+        for (var i = 7; i >= 0; i--) {
+            z = (z << 1) ^ ((z >>> 7) * 0x11d);
+            z ^= ((b >>> i) & 1) * a;
+        }
+        return z & 0xff;
+    }
+
+    function rsDivisor(degree) {
+        var result = [], i, j, root = 1;
+        for (i = 0; i < degree; i++) result.push(0);
+        result[degree - 1] = 1;
+        for (i = 0; i < degree; i++) {
+            for (j = 0; j < degree; j++) {
+                result[j] = gfMul(result[j], root);
+                if (j + 1 < degree) result[j] ^= result[j + 1];
+            }
+            root = gfMul(root, 0x02);
+        }
+        return result;
+    }
+
+    function rsRemainder(data, divisor) {
+        var rem = divisor.map(function () { return 0; });
+        data.forEach(function (byte) {
+            var factor = byte ^ rem[0];
+            rem.shift();
+            rem.push(0);
+            for (var i = 0; i < divisor.length; i++) rem[i] ^= gfMul(divisor[i], factor);
+        });
+        return rem;
+    }
+
+    function rawDataModules(ver) {
+        var result = (16 * ver + 128) * ver + 64;
+        if (ver >= 2) {
+            var numAlign = Math.floor(ver / 7) + 2;
+            result -= (25 * numAlign - 10) * numAlign - 55;
+        }
+        if (ver >= 7) result -= 36;
+        return result;
+    }
+
+    function dataCodewords(ver) {
+        return Math.floor(rawDataModules(ver) / 8) - ECC_PER_BLOCK.M[ver] * ECC_BLOCKS.M[ver];
+    }
+
+    function maskBit(mask, x, y) {
+        switch (mask) {
+            case 0: return (x + y) % 2 === 0;
+            case 1: return y % 2 === 0;
+            case 2: return x % 3 === 0;
+            case 3: return (x + y) % 3 === 0;
+            case 4: return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+            case 5: return (x * y) % 2 + (x * y) % 3 === 0;
+            case 6: return ((x * y) % 2 + (x * y) % 3) % 2 === 0;
+            default: return ((x + y) % 2 + (x * y) % 3) % 2 === 0;
+        }
+    }
+
+    function finderPenalty(line) {
+        var patterns = [[true, false, true, true, true, false, true, false, false, false, false],
+                        [false, false, false, false, true, false, true, true, true, false, true]];
+        var score = 0, i, j, k, match;
+        for (i = 0; i + 11 <= line.length; i++) {
+            for (k = 0; k < 2; k++) {
+                match = true;
+                for (j = 0; j < 11; j++) {
+                    if (line[i + j] !== patterns[k][j]) { match = false; break; }
+                }
+                if (match) score += 40;
+            }
+        }
+        return score;
+    }
+
+    function penaltyScore(modules) {
+        var size = modules.length, result = 0, x, y, i;
+
+        for (y = 0; y < size; y++) {
+            var runColor = modules[y][0], runLen = 1;
+            for (x = 1; x <= size; x++) {
+                var cur = x < size ? modules[y][x] : !runColor;
+                if (cur === runColor) {
+                    runLen++;
+                    if (runLen === 5) result += 3;
+                    else if (runLen > 5) result++;
+                } else {
+                    runColor = cur;
+                    runLen = 1;
+                }
+            }
+            result += finderPenalty(modules[y]);
+        }
+
+        for (x = 0; x < size; x++) {
+            var col = [];
+            for (y = 0; y < size; y++) col.push(modules[y][x]);
+            var cColor = col[0], cLen = 1;
+            for (y = 1; y <= size; y++) {
+                var ccur = y < size ? col[y] : !cColor;
+                if (ccur === cColor) {
+                    cLen++;
+                    if (cLen === 5) result += 3;
+                    else if (cLen > 5) result++;
+                } else {
+                    cColor = ccur;
+                    cLen = 1;
+                }
+            }
+            result += finderPenalty(col);
+        }
+
+        for (y = 0; y + 1 < size; y++) {
+            for (x = 0; x + 1 < size; x++) {
+                var c = modules[y][x];
+                if (c === modules[y][x + 1] && c === modules[y + 1][x] && c === modules[y + 1][x + 1]) result += 3;
+            }
+        }
+
+        var dark = 0;
+        for (y = 0; y < size; y++) for (x = 0; x < size; x++) if (modules[y][x]) dark++;
+        var total = size * size;
+        var k = Math.floor(Math.abs(dark * 20 - total * 10) / total);
+        result += k * 10;
+        return result;
+    }
+
+    function buildMatrix(text) {
+        var bytes = toUtf8(text);
+        var version = 0, v;
+        for (v = 1; v <= MAX_VERSION; v++) {
+            var capacityBits = dataCodewords(v) * 8;
+            var charCountBits = v <= 9 ? 8 : 16;
+            if (4 + charCountBits + bytes.length * 8 <= capacityBits) { version = v; break; }
+        }
+        if (version === 0) throw new Error('QR: text too long');
+
+        var bits = [];
+        function append(value, length) {
+            for (var i = length - 1; i >= 0; i--) bits.push((value >>> i) & 1);
+        }
+        append(4, 4);
+        append(bytes.length, version <= 9 ? 8 : 16);
+        bytes.forEach(function (b) { append(b, 8); });
+        var totalCodewords = Math.floor(rawDataModules(version) / 8);
+        var dataLength = dataCodewords(version);
+        append(0, Math.min(4, dataLength * 8 - bits.length));
+        while (bits.length % 8 !== 0) bits.push(0);
+
+        var codewords = [];
+        for (var i = 0; i < bits.length; i += 8) {
+            var byte = 0;
+            for (var j = 0; j < 8; j++) byte = (byte << 1) | bits[i + j];
+            codewords.push(byte);
+        }
+        for (var pad = 0xEC; codewords.length < dataLength; pad ^= 0xEC ^ 0x11) codewords.push(pad);
+
+        // Reed-Solomon error correction and block interleaving
+        var numBlocks = ECC_BLOCKS.M[version];
+        var blockEccLen = ECC_PER_BLOCK.M[version];
+        var numShortBlocks = numBlocks - totalCodewords % numBlocks;
+        var shortBlockLen = Math.floor(totalCodewords / numBlocks);
+        var divisor = rsDivisor(blockEccLen);
+        var blocks = [];
+        for (var b = 0, pos = 0; b < numBlocks; b++) {
+            var len = shortBlockLen - blockEccLen + (b < numShortBlocks ? 0 : 1);
+            var dat = codewords.slice(pos, pos + len);
+            pos += len;
+            var ecc = rsRemainder(dat, divisor);
+            if (b < numShortBlocks) dat.push(0);
+            blocks.push(dat.concat(ecc));
+        }
+        var finalCodewords = [];
+        for (var c = 0; c < blocks[0].length; c++) {
+            blocks.forEach(function (block, idx) {
+                if (c !== shortBlockLen - blockEccLen || idx >= numShortBlocks) finalCodewords.push(block[c]);
+            });
+        }
+
+        // Canvas
+        var size = version * 4 + 17;
+        var modules = [], isFunction = [];
+        for (var r = 0; r < size; r++) {
+            modules.push(new Array(size).fill(false));
+            isFunction.push(new Array(size).fill(false));
+        }
+        function setFn(x, y, dark) {
+            if (x < 0 || y < 0 || x >= size || y >= size) return;
+            modules[y][x] = dark;
+            isFunction[y][x] = true;
+        }
+        function getBit(value, index) { return ((value >>> index) & 1) !== 0; }
+
+        // Timing first: the finder rings and separators must overwrite it where they overlap
+        // (row/column 6 runs through the finder patterns), otherwise their outlines get gaps.
+        for (var t = 0; t < size; t++) {
+            setFn(6, t, t % 2 === 0);
+            setFn(t, 6, t % 2 === 0);
+        }
+
+        function drawFinder(cx, cy) {
+            for (var dy = -4; dy <= 4; dy++) {
+                for (var dx = -4; dx <= 4; dx++) {
+                    var dist = Math.max(Math.abs(dx), Math.abs(dy));
+                    setFn(cx + dx, cy + dy, dist !== 2 && dist !== 4);
+                }
+            }
+        }
+        drawFinder(3, 3);
+        drawFinder(size - 4, 3);
+        drawFinder(3, size - 4);
+
+        var align = ALIGN_POS[version];
+        var lastAlign = align.length - 1;
+        for (var ay = 0; ay < align.length; ay++) {
+            for (var ax = 0; ax < align.length; ax++) {
+                // The three corner patterns coincide with the finder patterns and are not drawn.
+                if ((ax === 0 && ay === 0) || (ax === 0 && ay === lastAlign) || (ax === lastAlign && ay === 0)) continue;
+                for (var dy2 = -2; dy2 <= 2; dy2++) {
+                    for (var dx2 = -2; dx2 <= 2; dx2++) {
+                        setFn(align[ax] + dx2, align[ay] + dy2, Math.max(Math.abs(dx2), Math.abs(dy2)) !== 1);
+                    }
+                }
+            }
+        }
+
+        function drawFormatBits(mask) {
+            var data = (ECC_BITS.M << 3) | mask;
+            var rem = data;
+            for (var i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+            var value = ((data << 10) | rem) ^ 0x5412;
+            for (var i2 = 0; i2 <= 5; i2++) setFn(8, i2, getBit(value, i2));
+            setFn(8, 7, getBit(value, 6));
+            setFn(8, 8, getBit(value, 7));
+            setFn(7, 8, getBit(value, 8));
+            for (var i3 = 9; i3 < 15; i3++) setFn(14 - i3, 8, getBit(value, i3));
+            for (var i4 = 0; i4 < 8; i4++) setFn(size - 1 - i4, 8, getBit(value, i4));
+            for (var i5 = 8; i5 < 15; i5++) setFn(8, size - 15 + i5, getBit(value, i5));
+            setFn(8, size - 8, true);
+        }
+        drawFormatBits(0);
+
+        if (version >= 7) {
+            var vrem = version;
+            for (var vi = 0; vi < 12; vi++) vrem = (vrem << 1) ^ ((vrem >>> 11) * 0x1F25);
+            var vbits = (version << 12) | vrem;
+            for (var vk = 0; vk < 18; vk++) {
+                var dark = getBit(vbits, vk);
+                var a = size - 11 + vk % 3, bb = Math.floor(vk / 3);
+                setFn(a, bb, dark);
+                setFn(bb, a, dark);
+            }
+        }
+
+        var bitIndex = 0;
+        for (var right = size - 1; right >= 1; right -= 2) {
+            if (right === 6) right = 5;
+            for (var vert = 0; vert < size; vert++) {
+                for (var jj = 0; jj < 2; jj++) {
+                    var mx = right - jj;
+                    var upward = ((right + 1) & 2) === 0;
+                    var my = upward ? size - 1 - vert : vert;
+                    if (!isFunction[my][mx] && bitIndex < finalCodewords.length * 8) {
+                        modules[my][mx] = getBit(finalCodewords[bitIndex >>> 3], 7 - (bitIndex & 7));
+                        bitIndex++;
+                    }
+                }
+            }
+        }
+
+        function applyMask(mask) {
+            for (var y2 = 0; y2 < size; y2++) {
+                for (var x2 = 0; x2 < size; x2++) {
+                    if (!isFunction[y2][x2] && maskBit(mask, x2, y2)) modules[y2][x2] = !modules[y2][x2];
+                }
+            }
+        }
+
+        var bestMask = 0, minPenalty = Infinity;
+        for (var mask = 0; mask < 8; mask++) {
+            applyMask(mask);
+            drawFormatBits(mask);
+            var score = penaltyScore(modules);
+            if (score < minPenalty) { minPenalty = score; bestMask = mask; }
+            applyMask(mask); // XOR is self-inverse, so this undoes the mask
+        }
+
+        applyMask(bestMask);
+        drawFormatBits(bestMask);
+        return modules;
+    }
+
+    function qrSvg(text, sizePx) {
+        var modules = buildMatrix(text);
+        var n = modules.length, quiet = 4, dim = n + quiet * 2;
+        var d = '';
+        for (var y = 0; y < n; y++) {
+            for (var x = 0; x < n; x++) {
+                if (modules[y][x]) d += 'M' + (x + quiet) + ' ' + (y + quiet) + 'h1v1h-1z';
+            }
+        }
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim + '" width="' + sizePx +
+            '" height="' + sizePx + '" shape-rendering="crispEdges" role="img" aria-label="QR-код">' +
+            '<rect width="' + dim + '" height="' + dim + '" fill="#ffffff"/>' +
+            '<path d="' + d + '" fill="#111111"/></svg>';
+    }
+
+    /* ---------- page behaviour ---------- */
+
+    function isMobilePhone() {
+        var ua = navigator.userAgent || '';
+        if (/android|iphone|ipod|iemobile|windows phone|blackberry|opera mini|opera mobi|mobile safari/i.test(ua)) return true;
+        if (/iPad/i.test(ua)) return true;
+        return /Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1; // iPadOS 13+ reports as Mac
+    }
+
+    function renderQr(id, link) {
+        var box = document.getElementById(id);
+        if (box) box.innerHTML = qrSvg(link, 180);
+    }
+
+    function init() {
+        var mobileView = document.getElementById('mobile-view');
+        var desktopView = document.getElementById('desktop-view');
+        var status = document.getElementById('status');
+        var openLink = document.getElementById('open-app');
+        var mobileHint = document.getElementById('mobile-hint');
+
+        if (isMobilePhone()) {
+            if (desktopView) desktopView.hidden = true;
+            if (mobileView) mobileView.hidden = false;
+            if (status) status.textContent = 'Переходим в приложение «ПРБР»…';
+
+            if (openLink) openLink.addEventListener('click', function () { window.setTimeout(openDeepLink, 0); });
+            window.setTimeout(openDeepLink, 0);
+            window.setTimeout(function () {
+                if (document.hidden) return;
+                if (status) status.textContent = 'Не получается открыться автоматически?';
+                if (mobileHint) mobileHint.textContent = 'Нажмите кнопку выше. Если «ПРБР» не установлен — скачайте приложение:';
+            }, 1800);
+        } else {
+            renderQr('qr-android', ANDROID_LINK);
+            renderQr('qr-ios', IOS_LINK);
+        }
+    }
+
+    var deepLinkTried = false;
+    function openDeepLink() {
+        if (deepLinkTried) return;
+        deepLinkTried = true;
+        window.location.href = DEEP_LINK;
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
 </body>
 </html>

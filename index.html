@@ -6,6 +6,8 @@
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#ffffff">
 <meta name="description" content="Приложение ПРБР: открыть на телефоне или скачать по QR-коду.">
+<!-- serving prefix stripped from location.pathname before building the deep link; empty on a domain root -->
+<meta name="app-base" content="/platform.upr.io">
 <title>ПРБР — приложение</title>
 <style>
     * { box-sizing: border-box }
@@ -131,6 +133,7 @@
 
     var SCHEME = 'prbr://';
     var ROOT_TARGET = 'task';
+    var PATH_PARAM = 'p';
     var ANDROID_LINK = 'sberapps://open.sberapps/btr.prbr.mobile';
     var IOS_LINK = 'sbapps://application?id=com.platform.upr';
 
@@ -479,12 +482,42 @@
         if (box) box.innerHTML = qrSvg(link, 180);
     }
 
-    // pathname must not be decoded here: %2F/%23 would turn into real separators and move data between authority, path and query.
+    function normalizePath(path) {
+        return path.replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+    }
+
+    function siteBase() {
+        var meta = document.querySelector && document.querySelector('meta[name="app-base"]');
+        return meta ? String(meta.getAttribute('content') || '').replace(/\/+$/, '') : '';
+    }
+
+    // location.pathname must not be decoded: %2F/%23 would become real separators and move data between authority, path and query.
+    function pathFromLocation() {
+        var loc = window.location || {};
+        var base = siteBase();
+        var path = String(loc.pathname || '');
+        if (base && path.indexOf(base + '/') === 0) path = path.slice(base.length);
+        else if (base && path === base) path = '/';
+        return normalizePath(path.replace(/\/index\.html$/i, '/'));
+    }
+
     function deepLink() {
         var loc = window.location || {};
-        var path = String(loc.pathname || '').replace(/\/index\.html$/i, '/');
-        path = path.replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
-        return SCHEME + (path || ROOT_TARGET) + String(loc.search || '');
+        var entries = String(loc.search || '').replace(/^\?/, '').split('&');
+        var given = null, rest = [], i;
+        for (i = 0; i < entries.length; i++) {
+            if (!entries[i]) continue;
+            if (entries[i] === PATH_PARAM || entries[i].indexOf(PATH_PARAM + '=') === 0) {
+                // %2F is decoded because generators put encodeURIComponent()'d paths into p; every other escape stays verbatim.
+                if (given === null) given = normalizePath(entries[i].slice(PATH_PARAM.length + 1).replace(/%2f/gi, '/'));
+                continue;
+            }
+            rest.push(entries[i]);
+        }
+        var path = given === null ? pathFromLocation() : given;
+        var link = SCHEME + (path || ROOT_TARGET);
+        if (rest.length) link += (path.indexOf('?') < 0 ? '?' : '&') + rest.join('&');
+        return link;
     }
 
     function init() {

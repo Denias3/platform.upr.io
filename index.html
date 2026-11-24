@@ -103,10 +103,10 @@
     <p class="muted" id="status">Откройте приложение на телефоне или отсканируйте QR-код, чтобы скачать его.</p>
 
     <section id="mobile-view" hidden>
-        <a class="btn" id="open-app" href="prbr://mobile">Открыть «ПРБР»</a>
+        <a class="btn" id="open-app" href="prbr://task">Открыть «ПРБР»</a>
         <p class="hint" id="mobile-hint">Приложение ещё не установлено? Скачайте его в магазине приложений:</p>
         <p class="store-links">
-            <a href="sberapps://open.sberapps/btr.prbr.mobile">Android</a>
+            <a href="sberapps://open.sberapps/btr.prbr.mobile">Apps (Android)</a>
             <a href="sbapps://application?id=com.platform.upr">Apps (iOS)</a>
         </p>
     </section>
@@ -129,7 +129,8 @@
 (function () {
     'use strict';
 
-    var DEEP_LINK = 'prbr://mobile';
+    var SCHEME = 'prbr://';
+    var ROOT_TARGET = 'task';
     var ANDROID_LINK = 'sberapps://open.sberapps/btr.prbr.mobile';
     var IOS_LINK = 'sbapps://application?id=com.platform.upr';
 
@@ -478,6 +479,14 @@
         if (box) box.innerHTML = qrSvg(link, 180);
     }
 
+    // pathname must not be decoded here: %2F/%23 would turn into real separators and move data between authority, path and query.
+    function deepLink() {
+        var loc = window.location || {};
+        var path = String(loc.pathname || '').replace(/\/index\.html$/i, '/');
+        path = path.replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+        return SCHEME + (path || ROOT_TARGET) + String(loc.search || '');
+    }
+
     function init() {
         var mobileView = document.getElementById('mobile-view');
         var desktopView = document.getElementById('desktop-view');
@@ -485,13 +494,16 @@
         var openLink = document.getElementById('open-app');
         var mobileHint = document.getElementById('mobile-hint');
 
+        var link = deepLink();
+        if (openLink) openLink.setAttribute('href', link);
+
         if (isMobilePhone()) {
             if (desktopView) desktopView.hidden = true;
             if (mobileView) mobileView.hidden = false;
             if (status) status.textContent = 'Переходим в приложение «ПРБР»…';
 
-            if (openLink) openLink.addEventListener('click', function () { window.setTimeout(openDeepLink, 0); });
-            window.setTimeout(openDeepLink, 0);
+            if (openLink) openLink.addEventListener('click', function () { window.setTimeout(function () { openDeepLink(link); }, 0); });
+            window.setTimeout(function () { openDeepLink(link); }, 0);
             window.setTimeout(function () {
                 if (document.hidden) return;
                 if (status) status.textContent = 'Не получается открыться автоматически?';
@@ -504,10 +516,10 @@
     }
 
     var deepLinkTried = false;
-    function openDeepLink() {
+    function openDeepLink(link) {
         if (deepLinkTried) return;
         deepLinkTried = true;
-        window.location.href = DEEP_LINK;
+        window.location.href = link;
     }
 
     if (document.readyState === 'loading') {
